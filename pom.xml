@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>lt.samerdokas</groupId>
+    <artifactId>gdd-batch-app</artifactId>
+    <version>1.00</version>
+    <packaging>jar</packaging>
+
+    <name>GDD Batch App</name>
+    <description>A command line application for performing non-interactively batched or interactive inventory downloads</description>
+    <developers>
+        <developer>
+            <name>${vendor}</name>
+            <email>tadas@samerdokas.lt</email>
+        </developer>
+    </developers>
+    <url>https://github.com/samerdokas/gdd-batch-app</url>
+    <inceptionYear>2022</inceptionYear>
+
+    <properties>
+        <vendor>Tadas Samerdokas</vendor>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
+
+        <java.version>17</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.8.9</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <defaultGoal>clean package</defaultGoal>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+            </plugin>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.2.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Implementation-Time>${maven.build.timestamp}</Implementation-Time>
+                            <Main-Class>lt.samerdokas.gdd.batch.Main</Main-Class>
+                        </manifestEntries>
+                    </archive>
+                    <outputDirectory>${project.build.directory}/jar</outputDirectory>
+                </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.2.0</version>
+                <executions>
+                    <execution>
+                        <id>copy</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <artifactItems>
+                        <artifactItem>
+                            <groupId>${project.groupId}</groupId>
+                            <artifactId>${project.artifactId}</artifactId>
+                            <version>${project.version}</version>
+                            <type>jar</type>
+                            <overWrite>false</overWrite>
+                        </artifactItem>
+                        <artifactItem>
+                            <groupId>com.google.code.gson</groupId>
+                            <artifactId>gson</artifactId>
+                            <version>2.8.9</version>
+                            <type>jar</type>
+                            <overWrite>false</overWrite>
+                        </artifactItem>
+                    </artifactItems>
+                    <outputDirectory>${project.build.directory}/prepackage</outputDirectory>
+                    <overWriteReleases>false</overWriteReleases>
+                    <overWriteSnapshots>true</overWriteSnapshots>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.0.0</version>
+                <configuration>
+                    <executable>jpackage</executable>
+                    <workingDirectory>${project.build.directory}</workingDirectory>
+                    <arguments>
+                        <argument>--app-version</argument>
+                        <argument>${project.version}</argument>
+                        <argument>--copyright</argument>
+                        <argument>Copyright (C) 2022 ${vendor}</argument>
+                        <argument>--description</argument>
+                        <argument>${project.name}</argument>
+                        <argument>--name</argument>
+                        <argument>${project.name}</argument>
+                        <argument>--dest</argument>
+                        <argument>./package/</argument>
+                        <argument>--vendor</argument>
+                        <argument>${vendor}</argument>
+                        <argument>--add-modules</argument>
+                        <argument>lt.samerdokas.gdd.batch,com.google.gson</argument>
+                        <argument>--module-path</argument>
+                        <argument>./prepackage/</argument>
+                        <argument>--input</argument>
+                        <argument>./prepackage/</argument>
+                        <argument>--main-jar</argument>
+                        <argument>${project.build.finalName}.jar</argument>
+                        <argument>--win-console</argument>
+                        <argument>--about-url</argument>
+                        <argument>${project.url}</argument>
+                        <argument>--license-file</argument>
+                        <argument>${project.basedir}/LICENSE</argument>
+                        <argument>--win-dir-chooser</argument>
+                        <argument>--win-help-url</argument>
+                        <argument>${project.url}</argument>
+                        <argument>--win-menu</argument>
+                        <argument>--win-menu-group</argument>
+                        <argument>GDD</argument>
+                        <argument>--win-per-user-install</argument>
+                        <argument>--win-shortcut</argument>
+                        <argument>--win-shortcut-prompt</argument>
+                        <argument>--win-update-url</argument>
+                        <argument>${project.url}/releases</argument>
+                    </arguments>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <phase>package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

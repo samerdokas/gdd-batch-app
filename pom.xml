@@ -22,6 +22,7 @@
 
     <properties>
         <vendor>Tadas Samerdokas</vendor>
+        <package.id>c3657091-0265-457b-8b46-bbe75dc3468b</package.id>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
 
@@ -139,6 +140,8 @@
                         <argument>--win-shortcut-prompt</argument>
                         <argument>--win-update-url</argument>
                         <argument>${project.url}/releases</argument>
+                        <argument>--win-upgrade-uuid</argument>
+                        <argument>${package.id}</argument>
                     </arguments>
                 </configuration>
                 <executions>

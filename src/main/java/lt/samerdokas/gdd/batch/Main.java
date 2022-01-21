@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -41,6 +42,9 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
 public class Main {
+    private static final boolean USE_UNICODE = Boolean.parseBoolean(System.getenv().getOrDefault("GDD_UNICODE_TERMINAL", "false").toLowerCase(Locale.ROOT));
+    private static final String SERVICE_URL = System.getenv().getOrDefault("GDD_SERVICE_URL", "https://gdd.samerdokas.lt/api/GetDownloadInfo");
+    
     private static Set<String> readFile(String relPath) {
         try {
             return Files.readAllLines(Paths.get(relPath), StandardCharsets.UTF_8).stream().filter(Predicate.not(String::isBlank)).collect(Collectors.toCollection(LinkedHashSet::new));
@@ -74,7 +78,7 @@ public class Main {
         for (String filename : filenames) {
             result.add(new Page(item, title, filename, pages.get(filename).getAsString()));
         }
-        System.out.println("\uD83D\uDCD6" + title);
+        System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "\uD83D\uDCD6" : "", title, System.lineSeparator());
         return result;
     }
     
@@ -84,10 +88,9 @@ public class Main {
             return toPages(cache.get());
         }
         
-        final String urlString = System.getenv().getOrDefault("GDD_SERVICE_URL", "https://gdd.samerdokas.lt/api/GetDownloadInfo");
         final URI uri;
         try {
-            uri = new URL(urlString + "?url=" + URLEncoder.encode(inventoryUrl, StandardCharsets.UTF_8)).toURI();
+            uri = new URL(SERVICE_URL + "?url=" + URLEncoder.encode(inventoryUrl, StandardCharsets.UTF_8)).toURI();
         } catch (MalformedURLException | URISyntaxException e) {
             throw new AssertionError(e);
         }
@@ -102,7 +105,7 @@ public class Main {
             try {
                 HttpResponse<byte[]> response = client.send(request, BodyHandlers.ofByteArray());
                 if (response.statusCode() != 200) {
-                    System.out.println("\uD83D\uDED1[" + response.statusCode() + "]" + inventoryUrl);
+                    System.out.printf(Locale.ROOT, "%s(%d)%s%s", USE_UNICODE ? "\uD83D\uDED1" : "X", response.statusCode(), inventoryUrl, System.lineSeparator());
                     return Collections.emptyList();
                 }
                 
@@ -128,16 +131,21 @@ public class Main {
         return result.toString();
     }
     
-    private static void attemptDownload(HttpClient client, HttpRequest request, Path file) {
+    private static void attemptDownload(HttpClient client, HttpRequest request, Path file, int tries) {
         String filename = file.getFileName().toString();
         filename = filename.substring(0, filename.lastIndexOf('.'));
-        for (int i = 0; i < 5; ++i) {
+        for (int i = 0; i < tries; ++i) {
             try {
                 Files.createDirectories(file.getParent());
             } catch (IOException e) {
                 throw new AssertionError(e);
             }
-            System.out.println((i == 0 ? "▶️" : "\uD83D\uDD01") + filename);
+            if (i == 0) {
+                System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "▶️" : "0% ", filename, System.lineSeparator());
+            } else {
+                System.out.printf(Locale.ROOT, "%s(%d)%s%s", USE_UNICODE ? "\uD83D\uDD01" : "0% ", i, filename, System.lineSeparator());
+            }
+            
             HttpResponse<Path> response;
             try {
                 response = client.send(request, BodyHandlers.ofFile(file, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE));
@@ -154,10 +162,10 @@ public class Main {
             } catch (IOException e) {
                 // ???
             }
-            System.out.println("✔️" + filename);
+            System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "✔️" : "100% ", filename, System.lineSeparator());
             return;
         }
-        System.out.println("❌" + filename);
+        System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "❌" : "X ", filename, System.lineSeparator());
     }
     
     public static void main(String[] args) {
@@ -165,16 +173,21 @@ public class Main {
         Audit audit = new Audit(downloads);
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofMinutes(1)).followRedirects(Redirect.NORMAL).build();
         AtomicInteger threadId = new AtomicInteger();
-        int threads;
+        int threads, retries;
         try {
             threads = Integer.parseInt(System.getenv().getOrDefault("GDD_WORKERS", "4"));
         } catch (NumberFormatException e) {
             threads = 4;
         }
+        try {
+            retries = Integer.parseInt(System.getenv().getOrDefault("GDD_DOWNLOAD_RETRIES", "10"));
+        } catch (NumberFormatException e) {
+            retries = 10;
+        }
         ExecutorService executor = Executors.newFixedThreadPool(4, (r) -> new Thread(r, "GDD-Worker-" + threadId.incrementAndGet()));
         String version = Main.class.getPackage().getImplementationVersion();
         if (version == null) {
-            version = "dev";
+            version = "dev[" + SERVICE_URL + "]";
         }
         
         String realPath;
@@ -183,7 +196,7 @@ public class Main {
         } catch (IOException e) {
             realPath = downloads.toString();
         }
-        System.out.println("ℹ️" + version + " #️⃣" + threads + " ↘️" + realPath);
+        System.out.printf(Locale.ROOT, "%s%s %s%d %s%d %s%s%s", USE_UNICODE ? "ℹ️" : "v", version, USE_UNICODE ? "#️⃣" : "#", threads, USE_UNICODE ? "\uD83D\uDD03" : "*", retries, USE_UNICODE ? "↘️" : "", realPath, System.lineSeparator());
         
         Set<String> inventoryURLs = new LinkedHashSet<>();
         for (String arg : args) {
@@ -193,14 +206,19 @@ public class Main {
                 inventoryURLs.addAll(readFile(arg));
             }
         }
-        System.out.println("\uD83D\uDCDA" + inventoryURLs.size());
+        
+        BufferedReader interactiveInput = null;
+        if (inventoryURLs.isEmpty()) {
+            interactiveInput = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        } else {
+            System.out.printf(Locale.ROOT, "%s%d%s", USE_UNICODE ? "\uD83D\uDCDA" : "URLs ", inventoryURLs.size(), System.lineSeparator());
+        }
         
         List<Page> pages = new ArrayList<>();
         List<Future<?>> interactiveTasks = new ArrayList<>();
-        BufferedReader interactiveInput = inventoryURLs.isEmpty() ? new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)) : null;
         while (true) {
             if (interactiveInput != null) {
-                System.out.print("❓: ");
+                System.out.printf(Locale.ROOT, "%s: ", USE_UNICODE ? "❓" : "?");
                 try {
                     String url = interactiveInput.readLine();
                     if (url == null) {
@@ -218,11 +236,11 @@ public class Main {
             }
             
             for (String url : inventoryURLs) {
-                List<Page> somePages = getPageURLs(client, url, audit);
+                List<Page> somePages = getPageURLs(client, url.trim(), audit);
                 somePages.sort(Comparator.comparing(l -> l.filename));
                 pages.addAll(somePages);
             }
-            System.out.println("\uD83D\uDCC4" + pages.size());
+            System.out.printf(Locale.ROOT, "%s%d%s", USE_UNICODE ? "\uD83D\uDCC4" : "Files ", pages.size(), System.lineSeparator());
             for (Page page : pages) {
                 Path file = downloads.resolve(sanitizeDirectoryName(page.item + "_" + page.title)).resolve(page.filename);
                 if (Files.exists(file)) {
@@ -234,10 +252,11 @@ public class Main {
                 try {
                     request = HttpRequest.newBuilder(new URI(page.url)).timeout(Duration.ofMinutes(10)).build();
                 } catch (URISyntaxException e) {
-                    System.out.println("\uD83D\uDED1" + page.url);
+                    System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "\uD83D\uDED1" : "Invalid: ", page.url, System.lineSeparator());
                     continue;
                 }
-                interactiveTasks.add(executor.submit(() -> attemptDownload(client, request, filepart)));
+                final int totalTries = 1 + retries;
+                interactiveTasks.add(executor.submit(() -> attemptDownload(client, request, filepart, totalTries)));
             }
             if (interactiveInput == null) {
                 break;
@@ -253,8 +272,10 @@ public class Main {
                 }
             } catch (InterruptedException e) {
                 break;
+            } finally {
+                interactiveTasks.clear();
             }
-            System.out.println("\uD83D\uDCAF");
+            System.out.printf(Locale.ROOT, "%s%s", USE_UNICODE ? "\uD83D\uDCAF" : "Done", System.lineSeparator());
         }
         executor.shutdown();
         while (true) {
@@ -266,6 +287,6 @@ public class Main {
                 break;
             }
         }
-        System.out.println("\uD83D\uDCAF");
+        System.out.printf(Locale.ROOT, "%s%s", USE_UNICODE ? "\uD83D\uDCAF" : "Done", System.lineSeparator());
     }
 }

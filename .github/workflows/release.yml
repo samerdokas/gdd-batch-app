@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: [ v* ]
+
+jobs:
+  build-unix:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Java JDK
+      uses: actions/setup-java@v2.5.0
+      with:
+        java-version: 17
+        distribution: temurin
+        check-latest: true
+        cache: maven
+
+    - name: Build
+      run: |
+        chmod +x ./mvnw
+        ./mvnw --batch-mode --no-transfer-progress --strict-checksums package
+
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v2.3.1
+      with:
+        name: gdd-package-unix
+        path: target/package/*.deb
+        if-no-files-found: error
+        retention-days: 1
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Java JDK
+      uses: actions/setup-java@v2.5.0
+      with:
+        java-version: 17
+        distribution: microsoft
+        check-latest: true
+        cache: maven
+
+    - name: Build
+      run: .\mvnw.cmd --batch-mode --no-transfer-progress --strict-checksums package
+
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v2.3.1
+      with:
+        name: gdd-package-windows
+        path: target/package/*.exe
+        if-no-files-found: error
+        retention-days: 1
+
+  release:
+    needs: [build-unix, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download a Build Artifact
+      uses: actions/download-artifact@v2.1.0
+      with:
+        name: gdd-package-unix
+        path: packages
+
+    - name: Download a Build Artifact
+      uses: actions/download-artifact@v2.1.0
+      with:
+        name: gdd-package-windows
+        path: packages
+
+    - name: Create Release
+      uses: ncipollo/release-action@v1.9.0
+      with:
+        allowUpdates: false
+        artifactErrorsFailBuild: true
+        artifacts: packages/*
+        artifactContentType: application/octet-stream
+        draft: false
+        generateReleaseNotes: true
+        prerelease: false

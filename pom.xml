@@ -3,34 +3,98 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
+    
     <groupId>lt.samerdokas</groupId>
     <artifactId>gdd-batch-app</artifactId>
     <version>1.00</version>
     <packaging>jar</packaging>
-
+    
     <name>GDD Batch App</name>
     <description>A command line application for performing non-interactively batched or interactive inventory downloads</description>
     <developers>
         <developer>
             <name>${vendor}</name>
-            <email>tadas@samerdokas.lt</email>
+            <email>${maintainer}</email>
         </developer>
     </developers>
     <url>https://github.com/samerdokas/gdd-batch-app</url>
     <inceptionYear>2022</inceptionYear>
-
+    
     <properties>
         <vendor>Tadas Samerdokas</vendor>
+        <maintainer>tadas@samerdokas.lt</maintainer>
         <package.id>c3657091-0265-457b-8b46-bbe75dc3468b</package.id>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
-
+        
         <java.version>17</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
+        
+        <platform.specific.name>gdd-batch</platform.specific.name>
+        <platform.specific.toggle.1 />
+        <platform.specific.toggle.2 />
+        <platform.specific.toggle.3 />
+        <platform.specific.toggle.4 />
+        <platform.specific.toggle.5 />
+        <platform.specific.toggle.6 />
+        <platform.specific.argument.1.name />
+        <platform.specific.argument.1.value />
+        <platform.specific.argument.2.name />
+        <platform.specific.argument.2.value />
+        <platform.specific.argument.3.name />
+        <platform.specific.argument.3.value />
+        <platform.specific.argument.4.name />
+        <platform.specific.argument.4.value />
     </properties>
-
+    <profiles>
+        <profile>
+            <id>gdd-package-unix</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                </os>
+            </activation>
+            <properties>
+                <platform.specific.toggle.1>--linux-shortcut</platform.specific.toggle.1>
+                
+                <platform.specific.argument.1.name>--linux-deb-maintainer</platform.specific.argument.1.name>
+                <platform.specific.argument.1.value>${maintainer}</platform.specific.argument.1.value>
+                <platform.specific.argument.2.name>--linux-menu-group</platform.specific.argument.2.name>
+                <platform.specific.argument.2.value>Network;Utility;FileTransfer</platform.specific.argument.2.value>
+                <platform.specific.argument.3.name>--linux-app-category</platform.specific.argument.3.name>
+                <platform.specific.argument.3.value>web</platform.specific.argument.3.value>
+            </properties>
+        </profile>
+        <profile>
+            <id>gdd-package-windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <platform.specific.name>${project.name}</platform.specific.name>
+                
+                <platform.specific.toggle.1>--win-console</platform.specific.toggle.1>
+                <platform.specific.toggle.2>--win-dir-chooser</platform.specific.toggle.2>
+                <platform.specific.toggle.3>--win-menu</platform.specific.toggle.3>
+                <platform.specific.toggle.4>--win-per-user-install</platform.specific.toggle.4>
+                <platform.specific.toggle.5>--win-shortcut</platform.specific.toggle.5>
+                <platform.specific.toggle.6>--win-shortcut-prompt</platform.specific.toggle.6>
+                
+                <platform.specific.argument.1.name>--win-help-url</platform.specific.argument.1.name>
+                <platform.specific.argument.1.value>${project.url}</platform.specific.argument.1.value>
+                <platform.specific.argument.2.name>--win-menu-group</platform.specific.argument.2.name>
+                <platform.specific.argument.2.value>GDD</platform.specific.argument.2.value>
+                <platform.specific.argument.3.name>--win-update-url</platform.specific.argument.3.name>
+                <platform.specific.argument.3.value>${project.url}/releases</platform.specific.argument.3.value>
+                <platform.specific.argument.4.name>--win-upgrade-uuid</platform.specific.argument.4.name>
+                <platform.specific.argument.4.value>${package.id}</platform.specific.argument.4.value>
+            </properties>
+        </profile>
+    </profiles>
+    
     <dependencies>
         <dependency>
             <groupId>com.google.code.gson</groupId>
@@ -38,7 +102,7 @@
             <version>2.8.9</version>
         </dependency>
     </dependencies>
-
+    
     <build>
         <defaultGoal>clean package</defaultGoal>
         <plugins>
@@ -111,7 +175,7 @@
                         <argument>--description</argument>
                         <argument>${project.name}</argument>
                         <argument>--name</argument>
-                        <argument>${project.name}</argument>
+                        <argument>${platform.specific.name}</argument>
                         <argument>--dest</argument>
                         <argument>./package/</argument>
                         <argument>--vendor</argument>
@@ -124,24 +188,24 @@
                         <argument>./prepackage/</argument>
                         <argument>--main-jar</argument>
                         <argument>${project.build.finalName}.jar</argument>
-                        <argument>--win-console</argument>
                         <argument>--about-url</argument>
                         <argument>${project.url}</argument>
                         <argument>--license-file</argument>
                         <argument>${project.basedir}/LICENSE</argument>
-                        <argument>--win-dir-chooser</argument>
-                        <argument>--win-help-url</argument>
-                        <argument>${project.url}</argument>
-                        <argument>--win-menu</argument>
-                        <argument>--win-menu-group</argument>
-                        <argument>GDD</argument>
-                        <argument>--win-per-user-install</argument>
-                        <argument>--win-shortcut</argument>
-                        <argument>--win-shortcut-prompt</argument>
-                        <argument>--win-update-url</argument>
-                        <argument>${project.url}/releases</argument>
-                        <argument>--win-upgrade-uuid</argument>
-                        <argument>${package.id}</argument>
+                        <argument>${platform.specific.toggle.1}</argument>
+                        <argument>${platform.specific.toggle.2}</argument>
+                        <argument>${platform.specific.toggle.3}</argument>
+                        <argument>${platform.specific.toggle.4}</argument>
+                        <argument>${platform.specific.toggle.5}</argument>
+                        <argument>${platform.specific.toggle.6}</argument>
+                        <argument>${platform.specific.argument.1.name}</argument>
+                        <argument>${platform.specific.argument.1.value}</argument>
+                        <argument>${platform.specific.argument.2.name}</argument>
+                        <argument>${platform.specific.argument.2.value}</argument>
+                        <argument>${platform.specific.argument.3.name}</argument>
+                        <argument>${platform.specific.argument.3.value}</argument>
+                        <argument>${platform.specific.argument.4.name}</argument>
+                        <argument>${platform.specific.argument.4.value}</argument>
                     </arguments>
                 </configuration>
                 <executions>

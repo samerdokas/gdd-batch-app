@@ -7,6 +7,8 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -23,6 +25,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -32,18 +36,18 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
 public class Main {
-    private static final boolean USE_UNICODE = Boolean.parseBoolean(System.getenv().getOrDefault("GDD_UNICODE_TERMINAL", "false").toLowerCase(Locale.ROOT));
-    private static final String SERVICE_URL = System.getenv().getOrDefault("GDD_SERVICE_URL", "https://gdd.samerdokas.lt/api/GetDownloadInfo");
+    private static final boolean USE_UNICODE = Env.isTerminalCompatible();
+    private static final ScheduledExecutorService TERMINATOR = Executors.newSingleThreadScheduledExecutor((r) -> new Thread(r, "JDK-8208693"));
     
     private static Set<String> readFile(String relPath) {
         try {
@@ -90,7 +94,7 @@ public class Main {
         
         final URI uri;
         try {
-            uri = new URL(SERVICE_URL + "?url=" + URLEncoder.encode(inventoryUrl, StandardCharsets.UTF_8)).toURI();
+            uri = new URL(Env.getServiceURL() + "?url=" + URLEncoder.encode(inventoryUrl, StandardCharsets.UTF_8)).toURI();
         } catch (MalformedURLException | URISyntaxException e) {
             throw new AssertionError(e);
         }
@@ -131,63 +135,101 @@ public class Main {
         return result.toString();
     }
     
-    private static void attemptDownload(HttpClient client, HttpRequest request, Path file, int tries) {
+    private static void attemptDownload(HttpClient client, HttpRequest request, Path file, int currentAttempt, TaskManager tasks) {
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+        
         String filename = file.getFileName().toString();
         filename = filename.substring(0, filename.lastIndexOf('.'));
-        for (int i = 0; i < tries; ++i) {
-            try {
-                Files.createDirectories(file.getParent());
-            } catch (IOException e) {
-                throw new AssertionError(e);
+        
+        final boolean lastAttempt = currentAttempt == 1 + Env.getDownloadRetryCount();
+        if (currentAttempt == 0) {
+            System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "▶️" : "0% ", filename, System.lineSeparator());
+        } else {
+            System.out.printf(Locale.ROOT, "%s(%d)%s%s", USE_UNICODE ? "\uD83D\uDD01" : "0% ", currentAttempt, filename, System.lineSeparator());
+        }
+        
+        HttpResponse<Path> response;
+        long downloadDuration;
+        final AtomicBoolean normalTimeout = new AtomicBoolean(false);
+        try {
+            /* JDK-8208693 -> */
+            Thread thread = Thread.currentThread();
+            Optional<Duration> timeout = request.timeout();
+            ScheduledFuture<?> altTimeoutTask = null;
+            if (timeout.isPresent()) {
+                long timeoutSeconds = timeout.get().get(ChronoUnit.SECONDS);
+                altTimeoutTask = TERMINATOR.schedule(() -> {
+                    synchronized (thread) {
+                        normalTimeout.set(true);
+                        thread.interrupt();
+                    }
+                }, timeoutSeconds + 3, TimeUnit.SECONDS);
             }
-            if (i == 0) {
-                System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "▶️" : "0% ", filename, System.lineSeparator());
-            } else {
-                System.out.printf(Locale.ROOT, "%s(%d)%s%s", USE_UNICODE ? "\uD83D\uDD01" : "0% ", i, filename, System.lineSeparator());
-            }
-            
-            HttpResponse<Path> response;
+            /* -> JDK-8208693 */
             try {
+                long start = System.nanoTime();
                 response = client.send(request, BodyHandlers.ofFile(file, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE));
+                downloadDuration = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             } catch (IOException e) {
-                continue;
-            } catch (InterruptedException e) {
-                break;
+                if (lastAttempt) {
+                    StringWriter writer = new StringWriter();
+                    e.printStackTrace(new PrintWriter(writer));
+                    System.out.printf(Locale.ROOT, "%s%s %s%s", USE_UNICODE ? "❌" : "X ", filename, writer, System.lineSeparator());
+                } else {
+                    tasks.schedule(() -> attemptDownload(client, request, file, currentAttempt + 1, tasks), Env.getDownloadRetryDelaySeconds());
+                }
+                return;
+            } finally {
+                /* JDK-8208693 -> */
+                if (altTimeoutTask != null) {
+                    altTimeoutTask.cancel(false);
+                    synchronized (thread) {
+                        Thread.interrupted();
+                    }
+                }
+                /* -> JDK-8208693 */
             }
-            if (response.statusCode() != 200) {
-                continue;
+            final int statusCode = response.statusCode();
+            if (statusCode != 200) {
+                if (lastAttempt) {
+                    System.out.printf(Locale.ROOT, "%s%s %s%s", USE_UNICODE ? "❌" : "X ", filename, statusCode, System.lineSeparator());
+                } else {
+                    tasks.schedule(() -> attemptDownload(client, request, file, currentAttempt + 1, tasks), Env.getDownloadRetryDelaySeconds());
+                }
+                return;
             }
-            try {
-                Files.move(file, file.resolveSibling(filename));
-            } catch (IOException e) {
-                // ???
+        } catch (InterruptedException e) {
+            if (normalTimeout.get()) {
+                if (lastAttempt) {
+                    System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "❌" : "X ", filename, System.lineSeparator());
+                } else {
+                    tasks.schedule(() -> attemptDownload(client, request, file, currentAttempt + 1, tasks), Env.getDownloadRetryDelaySeconds());
+                }
             }
-            System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "✔️" : "100% ", filename, System.lineSeparator());
             return;
         }
-        System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "❌" : "X ", filename, System.lineSeparator());
+        
+        try {
+            Files.move(file, file.resolveSibling(filename));
+        } catch (IOException e) {
+            // ???
+        }
+        
+        System.out.printf(Locale.ROOT, "%s %.2fs %s%s", USE_UNICODE ? "✔️" : "100%", downloadDuration / 1000D, filename, System.lineSeparator());
     }
     
     public static void main(String[] args) {
-        Path downloads = Paths.get(System.getenv().getOrDefault("GDD_DOWNLOAD_PATH", Paths.get(System.getProperty("user.home", "."),"Downloads", "GDD").toString()));
+        Path downloads = Paths.get(Env.getDownloadPath());
         Audit audit = new Audit(downloads);
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofMinutes(1)).followRedirects(Redirect.NORMAL).build();
-        AtomicInteger threadId = new AtomicInteger();
-        int threads, retries;
-        try {
-            threads = Integer.parseInt(System.getenv().getOrDefault("GDD_WORKERS", "4"));
-        } catch (NumberFormatException e) {
-            threads = 4;
-        }
-        try {
-            retries = Integer.parseInt(System.getenv().getOrDefault("GDD_DOWNLOAD_RETRIES", "10"));
-        } catch (NumberFormatException e) {
-            retries = 10;
-        }
-        ExecutorService executor = Executors.newFixedThreadPool(4, (r) -> new Thread(r, "GDD-Worker-" + threadId.incrementAndGet()));
+        TaskManager tasks = new TaskManager();
         String version = Main.class.getPackage().getImplementationVersion();
         if (version == null) {
-            version = "dev[" + SERVICE_URL + "]";
+            version = "dev[" + Env.getServiceURL() + "]";
         }
         
         String realPath;
@@ -196,7 +238,7 @@ public class Main {
         } catch (IOException e) {
             realPath = downloads.toString();
         }
-        System.out.printf(Locale.ROOT, "%s%s %s%d %s%d %s%s%s", USE_UNICODE ? "ℹ️" : "v", version, USE_UNICODE ? "#️⃣" : "#", threads, USE_UNICODE ? "\uD83D\uDD03" : "*", retries, USE_UNICODE ? "↘️" : "", realPath, System.lineSeparator());
+        System.out.printf(Locale.ROOT, "%s%s %s%d %s%d %s%s%s", USE_UNICODE ? "ℹ️" : "v", version, USE_UNICODE ? "#️⃣" : "#", Env.getWorkerCount(), USE_UNICODE ? "\uD83D\uDD03" : "*", Env.getDownloadRetryCount(), USE_UNICODE ? "↘️" : "", realPath, System.lineSeparator());
         
         Set<String> inventoryURLs = new LinkedHashSet<>();
         for (String arg : args) {
@@ -215,7 +257,6 @@ public class Main {
         }
         
         List<Page> pages = new ArrayList<>();
-        List<Future<?>> interactiveTasks = new ArrayList<>();
         while (true) {
             if (interactiveInput != null) {
                 System.out.printf(Locale.ROOT, "%s: ", USE_UNICODE ? "❓" : "?");
@@ -250,42 +291,33 @@ public class Main {
                 HttpRequest request;
                 Path filepart = file.resolveSibling(file.getFileName() + ".filepart");
                 try {
-                    request = HttpRequest.newBuilder(new URI(page.url)).timeout(Duration.ofMinutes(10)).build();
+                    request = HttpRequest.newBuilder(new URI(page.url)).timeout(Duration.ofMinutes(1)).build();
                 } catch (URISyntaxException e) {
                     System.out.printf(Locale.ROOT, "%s%s%s", USE_UNICODE ? "\uD83D\uDED1" : "Invalid: ", page.url, System.lineSeparator());
                     continue;
                 }
-                final int totalTries = 1 + retries;
-                interactiveTasks.add(executor.submit(() -> attemptDownload(client, request, filepart, totalTries)));
+                tasks.submit(() -> attemptDownload(client, request, filepart, 0, tasks));
             }
             if (interactiveInput == null) {
                 break;
             }
             pages.clear();
-            try {
-                for (Future<?> task : interactiveTasks) {
-                    try {
-                        task.get();
-                    } catch (ExecutionException e) {
-                        // nothing to do here
-                    }
+            while (true) {
+                try {
+                    tasks.awaitAllTasks();
+                    break;
+                } catch (ExecutionException e) {
+                    // nothing to do here
+                } catch (InterruptedException e) {
+                    break;
                 }
-            } catch (InterruptedException e) {
-                break;
-            } finally {
-                interactiveTasks.clear();
             }
             System.out.printf(Locale.ROOT, "%s%s", USE_UNICODE ? "\uD83D\uDCAF" : "Done", System.lineSeparator());
         }
-        executor.shutdown();
-        while (true) {
-            try {
-                if (executor.awaitTermination(1, TimeUnit.DAYS)) {
-                    break;
-                }
-            } catch (InterruptedException e) {
-                break;
-            }
+        try {
+            tasks.shutdown();
+        } catch (InterruptedException e) {
+            // terminate immediately
         }
         System.out.printf(Locale.ROOT, "%s%s", USE_UNICODE ? "\uD83D\uDCAF" : "Done", System.lineSeparator());
     }

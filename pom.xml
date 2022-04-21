@@ -6,7 +6,7 @@
     
     <groupId>lt.samerdokas</groupId>
     <artifactId>gdd-batch-app</artifactId>
-    <version>1.01</version>
+    <version>1.02</version>
     <packaging>jar</packaging>
     
     <name>GDD Batch App</name>
@@ -182,7 +182,7 @@
                         <argument>--vendor</argument>
                         <argument>${vendor}</argument>
                         <argument>--add-modules</argument>
-                        <argument>lt.samerdokas.gdd.batch,com.google.gson</argument>
+                        <argument>lt.samerdokas.gdd.batch,com.google.gson,jdk.crypto.ec</argument>
                         <argument>--module-path</argument>
                         <argument>./prepackage/</argument>
                         <argument>--input</argument>

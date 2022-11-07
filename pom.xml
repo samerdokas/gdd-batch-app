@@ -6,7 +6,7 @@
     
     <groupId>lt.samerdokas</groupId>
     <artifactId>gdd-batch-app</artifactId>
-    <version>1.02</version>
+    <version>1.2.1</version>
     <packaging>jar</packaging>
     
     <name>GDD Batch App</name>
@@ -27,7 +27,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
         
-        <java.version>18</java.version>
+        <java.version>19</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         
@@ -99,7 +99,7 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.9.0</version>
+            <version>2.10</version>
         </dependency>
     </dependencies>
     
@@ -112,7 +112,7 @@
             </plugin>
             <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.2.2</version>
+                <version>3.3.0</version>
                 <configuration>
                     <archive>
                         <manifest>
@@ -151,7 +151,7 @@
                         <artifactItem>
                             <groupId>com.google.code.gson</groupId>
                             <artifactId>gson</artifactId>
-                            <version>2.9.0</version>
+                            <version>2.10</version>
                             <type>jar</type>
                             <overWrite>false</overWrite>
                         </artifactItem>

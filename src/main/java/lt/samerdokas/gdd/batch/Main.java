@@ -21,6 +21,7 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -123,15 +124,28 @@ public class Main {
         }
     }
     
-    private static String sanitizeDirectoryName(String name) {
-        StringBuilder result = new StringBuilder(name.length());
-        for (char c : name.toCharArray()) {
+    private static String sanitizeDirectoryName(CharSequence name) {
+        StringBuilder result = new StringBuilder(name.length()).append(name);
+        for (int i = 0; i < result.length(); ++i) {
+            char c = result.charAt(i);
             switch (c) {
-                case '<', '>', ':', '"', '/', '\\', '|', '?', '*' -> result.append('_');
-                default -> result.append(c);
+                case '<', '>', ':', '"', '/', '\\', '|', '?', '*' -> result.setCharAt(i, '_');
+                case '\t', '\r', '\n' -> result.setCharAt(i, ' ');
+                default -> {}
             }
         }
         return result.toString();
+    }
+    
+    private static Path safeResolve(Path root, CharSequence name) {
+        StringBuilder mutableName = new StringBuilder(name.length()).append(name);
+        while (true) {
+            try {
+                return root.resolve(mutableName.toString());
+            } catch (InvalidPathException e) {
+                mutableName.setCharAt(e.getIndex(), '_');
+            }
+        }
     }
     
     private static void attemptDownload(HttpClient client, HttpRequest request, Path file, int currentAttempt, TaskManager tasks) {
@@ -282,7 +296,7 @@ public class Main {
             }
             System.out.printf(Locale.ROOT, "%s%d%s", USE_UNICODE ? "\uD83D\uDCC4" : "Files ", pages.size(), System.lineSeparator());
             for (Page page : pages) {
-                Path file = downloads.resolve(sanitizeDirectoryName(page.item + "_" + page.title)).resolve(page.filename);
+                Path file = safeResolve(safeResolve(downloads, sanitizeDirectoryName(page.item + "_" + page.title)), page.filename);
                 if (Files.exists(file)) {
                     continue;
                 }

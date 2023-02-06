@@ -31,6 +31,8 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         
+        <gson.version>2.10.1</gson.version>
+        
         <platform.specific.name>gdd-batch</platform.specific.name>
         <platform.specific.toggle.1 />
         <platform.specific.toggle.2 />
@@ -99,7 +101,7 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.10.1</version>
+            <version>${gson.version}</version>
         </dependency>
     </dependencies>
     
@@ -151,7 +153,7 @@
                         <artifactItem>
                             <groupId>com.google.code.gson</groupId>
                             <artifactId>gson</artifactId>
-                            <version>2.10</version>
+                            <version>${gson.version}</version>
                             <type>jar</type>
                             <overWrite>false</overWrite>
                         </artifactItem>
@@ -172,7 +174,7 @@
                         <argument>--app-version</argument>
                         <argument>${project.version}</argument>
                         <argument>--copyright</argument>
-                        <argument>Copyright (C) 2022 ${vendor}</argument>
+                        <argument>Copyright (C) 2022-2023 ${vendor}</argument>
                         <argument>--description</argument>
                         <argument>${project.name}</argument>
                         <argument>--name</argument>
